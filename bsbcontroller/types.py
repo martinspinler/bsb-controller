@@ -23,6 +23,7 @@ class Flag(enum.IntFlag):
     NONE = 0
     FB = 1
     LB = 2
+    SIB= 4 # SET value => INF broadcast
 
 #class Flag(enum.IntFlag):
 #    WRITABLE = 0

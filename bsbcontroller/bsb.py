@@ -32,8 +32,12 @@ class Bsb():
         self._monitor_thread_event.set()
         self._monitor_thread.join()
 
+    def get_value(self, req) -> None:
+        self._requests.append((req, None, False))
+        # TODO: read from return Queue
+
     def set_value(self, req, value) -> None:
-        self._requests.append((req, value))
+        self._requests.append((req, value, True))
         # TODO: read from return Queue
 
     def set_monitored(self, monitor: dict) -> None:
@@ -134,6 +138,8 @@ class Bsb():
         print([f"{x:02X}" for x in telegram.to_raw()])
 
         ret = self._send_telegram(telegram)
+        if telegram.cmd == Command.INF:
+            return True
 
         timeout = 0
         t = self._get_telegram()
@@ -153,8 +159,12 @@ class Bsb():
             return False
 
         while self._requests:
-            request, value = self._requests.pop()
-            self._set_value(request, value)
+            request, value, do_set = self._requests.pop()
+            if do_set:
+                self._set_value(request, value)
+            else:
+                self._get_value(request)
+
             for cb in self.callbacks:
                 cb(request, value)
         return True

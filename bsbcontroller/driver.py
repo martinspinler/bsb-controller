@@ -89,7 +89,7 @@ class BsbDriver(object):
                     else:
                         self._ooo_queue.put_nowait(recv)
 
-            time.sleep(0.567)
+            time.sleep(2.567)
             print("BSB driver: sent telegram not received back, resending")
 
         return False

@@ -89,7 +89,11 @@ class Telegram(object):
 
     def set_value(self, value):
         try:
-            self._data = bytes(self._datatype.set(value))
+            self._data = bytes(self._datatype.set(self, value))
+            #self._datatype.set(self, value)
+            if self._intflags & Flag.SIB:
+                self._dst = 0x7F
+                self._cmd = Command.INF
             self.__update_data()
 
             #print("SV", list(self._data), self._flags, self._intflags)

@@ -1,5 +1,7 @@
 from struct import pack, unpack
+import datetime
 from .types import Command
+
 
 def clamp(n, smallest, largest):
     return max(smallest, min(n, largest))
@@ -19,7 +21,7 @@ class TT(object):
     #06 when setting a nullable field to NULL (in this case, the <value> byte will be ignored).
     def get(t):
         pass
-    def set(t):
+    def set(t, v):
         return None
 
 
@@ -30,7 +32,7 @@ class TTTemp(TT):
 
         return get_temp(t.data[0:2])
 
-    def set(v):
+    def set(t, v):
         if v == None:
             return [1, 0, 0]
         v = int(v * 64)
@@ -40,7 +42,14 @@ class TTOnOff(TT):
     def get(t):
         return True if t.data[0] > 0 else False
 
-    def set(v):
+    def set(t, v):
+        return [1, 1 if v else 0]
+
+class TTHWPush(TT):
+    def get(t):
+        return True if t.data[0] > 0 else False
+
+    def set(t, v):
         return [1, 1 if v else 0]
 
 class TTSchedule(TT):
@@ -52,7 +61,7 @@ class TTSchedule(TT):
                 text += ["{0:02}:{1:02}-{2:02}:{3:02}".format(*time[0:4])]
         return " ".join(text)
 
-    def set(v):
+    def set(t, v):
         ret = []
         l = re.findall(r'(\d+):(\d+)-(\d+):(\d+)', v)
         if not l:
@@ -90,7 +99,7 @@ class TTOpLvl(TT):
     def get(t):
         return TTOpLvl.values[t.data[0]] if t.data[0] in TTOpLvl.values else 'unknown'
 
-    def set(v):
+    def set(t, v):
         d = dict((v, k) for k,v in TTOpLvl.values.items())
         return [1, d[v]] if v in d else None
 
@@ -98,7 +107,17 @@ class TTDate(TT):
     def get(t):
         Y, M, D, d, h, m, s = t.data[1:8]
         return f"{D:02}.{M:02}.{Y+1900:02} {h:02}:{m:02}:{s:02}"
-        #return str(t.data[3]) + "." + str(t.data[2]) + ". " + str(t.data[1]+1900) + " " + str(t.data[5])  + ":"+  str(t.data[6]) + ":" +str(t.data[7])
+
+    def set(t, v):
+        if isinstance(v, str):
+            #v = '2023-02-28 14:30:00'
+            date_format = '%Y-%m-%d %H:%M:%S'
+            v = datetime.datetime.strptime(v, date_format)
+
+        if isinstance(v, datetime.datetime):
+            return [0, v.year - 1900, v.month, v.day, (v.weekday() + 1 ) % 7, v.hour, v.minute, v.second, 0]
+
+        return []
 
 class TTInt32(TT):
     def get(t):

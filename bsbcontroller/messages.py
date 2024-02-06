@@ -4,6 +4,7 @@ from .datatypes import *
 FB = Flag.FB
 LB = Flag.LB
 NN = Flag.NONE
+SIB= Flag.SIB
 
 def i2d(i):
     days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -15,7 +16,7 @@ messages = {
     # 0x007B00E7 ...: Baxi Luna Platinum+ 1.24
     0x05000064: (NN, None,      "identify"),
     0x053d0248: (NN, None,      "unknown1"),
-    0x0500006c: (NN, TTDate,    "datetime"),
+    0x0500006c: (SIB,TTDate,    "datetime"),
     0x0500006b: (NN, TTError,   "error"),
     0x31000212: (FB, TTHotWater,"hot_water_status"),
     0x3d2d0215: (LB, TTTemp,    "room1_temp_status"),
@@ -31,7 +32,8 @@ messages = {
     0x313d052f: (FB, TTTemp,    "boiler_water_temp"),
     0x053d056f: (FB, TTTemp,    "outer_temp_min"),
     0x053d056e: (FB, TTTemp,    "outer_temp_max"),
-    0x313d0571: (NN, TTOnOff,   "hot_water_operating_mode"), # FIXME
+    0x313d0571: (FB, TTOnOff,   "hot_water_operating_mode"), # FIXME
+    0x313d0573: (FB, TTHWPush,  "hot_water_push"), #01|01|
     0x2d3d0574: (FB, TTOpLvl,   "hc1_operating_level"),
     0x2d3d058e: (FB, TTTemp,    "req_room_comfort_temp"),
     0x2d3d0590: (FB, TTTemp,    "req_room_reduced_temp"),
