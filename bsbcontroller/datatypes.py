@@ -45,12 +45,12 @@ class TTOnOff(TT):
     def set(t, v):
         return [1, 1 if v else 0]
 
-class TTHWPush(TT):
+class TTHCStatus(TT):
     def get(t):
-        return True if t.data[0] > 0 else False
-
-    def set(t, v):
-        return [1, 1 if v else 0]
+        manual_set = bool(t.data[1] & 0x02)
+        running = bool(t.data[8] & 0x02)
+        hc_mode = TTOpLvl.values[t.data[0]] if t.data[0] in TTOpLvl.values else 'unknown'
+        return ""
 
 class TTSchedule(TT):
     def get(t):
@@ -89,6 +89,26 @@ class TTSchedule(TT):
 class TTPct(TT):
     def get(t):
         return t.data[0]
+
+class TTBStatus(TT):
+    def get(t):
+        val = unpack("!h", t.data)[0]
+        sel = {
+            0x00a6: "HC",
+            0x0011: "finishing",
+            0x0019: "off",
+        }
+        return sel[val] if val in sel else "unknown"
+
+class TTBHCMode(TT):
+    def get(t):
+        val = unpack("!h", t.data)[0]
+        sel = {
+            0x0072: "heat_comfort",
+            0x006e: "forced_circulation",
+            0x0019: "off",
+        }
+        return sel[val] if val in sel else "unknown"
 
 class TTPct2(TT):
     def get(t):
@@ -143,6 +163,7 @@ class TTError(TT):
 
 class TTStat2():
     def get(t):
+        stby = bool(t.data[10] & 0x08)
         temp = get_temp(t.data[0:2])
         pressure = get_float_decimal(t.data[3:4])
         # Exterior temperature, water pressure
@@ -150,9 +171,8 @@ class TTStat2():
 
 class TTHotWater():
     def get(t):
-        #s = ("Zapnuto" if t.data[0] & 0x01 else "Vypnuto") + " "
-        #s += ("Nabijeni" if t.data[2] & 0x08 else "Pripraveno")
-        s = ("Nabijeni" if t.data[1] & 0x08 else "Pripraveno")
+        s = ("charging" if t.data[1] & 0x08 else "ready")
+        s += ("" if t.data[1] & 0x04 else ", stby") # Also status byte is 0 in stby mode?
         return s
 
 class TTStat1():

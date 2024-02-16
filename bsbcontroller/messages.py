@@ -20,11 +20,12 @@ messages = {
     0x0500006b: (NN, TTError,   "error"),
     0x31000212: (FB, TTHotWater,"hot_water_status"),
     0x3d2d0215: (LB, TTTemp,    "room1_temp_status"),
-    0x2d000211: (NN, None,      "hc1_status"),
-    0x2e000211: (NN, None,      "hc2_status"),
-    0x2f000211: (NN, None,      "hc3_status"),
+    0x2d000211: (NN, TTHCStatus,"hc1_status"),
+    0x2e000211: (NN, TTHCStatus,"hc2_status"),
+    0x2f000211: (NN, TTHCStatus,"hc3_status"),
     0x05000213: (NN, TTStat1,   "status_msg1"),
     0x05000219: (NN, TTStat2,   "status_msg2"),
+    0x053d0236: (FB, TTOnOff,   "standby"),
     0x0d3d0519: (FB, TTTemp,    "boiler_temp"),
     0x113d051a: (FB, TTTemp,    "boiler_return_temp"),
     0x053d051d: (FB, TTTemp,    "flue_temp"),
@@ -33,7 +34,7 @@ messages = {
     0x053d056f: (FB, TTTemp,    "outer_temp_min"),
     0x053d056e: (FB, TTTemp,    "outer_temp_max"),
     0x313d0571: (FB, TTOnOff,   "hot_water_operating_mode"), # FIXME
-    0x313d0573: (FB, TTHWPush,  "hot_water_push"), #01|01|
+    0x313d0573: (FB, TTOnOff,   "hot_water_push"),
     0x2d3d0574: (FB, TTOpLvl,   "hc1_operating_level"),
     0x2d3d058e: (FB, TTTemp,    "req_room_comfort_temp"),
     0x2d3d0590: (FB, TTTemp,    "req_room_reduced_temp"),
@@ -43,8 +44,8 @@ messages = {
     0x313d074b: (FB, TTTemp,    "req_hot_water_temp"),
     0x053d06e8: (NN, None,      "phone_number"),
     0x053d07a2: (NN, None,      "hot_water_status2"),
-    0x053d07aa: (NN, None,      "hc_boilter_status"),
-    0x053d07a4: (NN, None,      "hc_mode"),
+    0x053d07aa: (NN, TTBStatus, "hc_boiler_status"),
+    0x053d07a4: (NN, TTBHCMode, "hc_mode"),
     0x053d07a9: (NN, None,      "boiler_status"),
     0x053d0805: (FB, TT10Float, "water_pressure"), #9005
     0x053d0826: (FB, TTPct,     "pump_modulation_pct"),
@@ -65,8 +66,7 @@ messages = {
     0x093d0e00: (FB, TTPct2,    "fan_modulation_pct"), # FIXME
     0x093d0e16: (FB, TTInt16,   "burner_ionisation_current"), # Vydel 100 a mas hodnotu v uA
     0x093d0e69: (FB, TTInt16,   "fan_rpm"),
-    0x053d3063: (NN, TTInt16,   "burner_water_pressure"), #FIXME : Same ID as below
-    0x053d3063: (NN, None,      "burner_phase"), # FIXME: Same ID as above
+    0x053d3063: (NN, TTInt16,   "burner_water_pressure"),
     0x093d0dfd: (NN, None,      "burner_current_phase"), #[0, 0x10] = modulace, 4=STY, 2=TLO?
     0x0d3d093b: (FB, TTInt32,   "first_stage_op_time"),
     0x053d2feb: (FB, TTInt32,   "hc_op_time"),
