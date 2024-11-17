@@ -49,7 +49,7 @@ class TTHCStatus(TT):
     def get(t):
         manual_set = bool(t.data[1] & 0x02)
         running = bool(t.data[8] & 0x02)
-        hc_mode = TTOpLvl.values[t.data[0]] if t.data[0] in TTOpLvl.values else 'unknown'
+        hc_mode = TTOpLvl.values.get(t.data[0], "unknown")
         return ""
 
 class TTSchedule(TT):
@@ -95,10 +95,11 @@ class TTBStatus(TT):
         val = unpack("!h", t.data)[0]
         sel = {
             0x00a6: "HC",
+            0x00a7: "partial HC",
             0x0011: "finishing",
             0x0019: "off",
         }
-        return sel[val] if val in sel else "unknown"
+        return sel.get(val, "unknown")
 
 class TTBHCMode(TT):
     def get(t):
@@ -108,7 +109,7 @@ class TTBHCMode(TT):
             0x006e: "forced_circulation",
             0x0019: "off",
         }
-        return sel[val] if val in sel else "unknown"
+        return sel.get(val, "unknown")
 
 class TTPct2(TT):
     def get(t):
@@ -117,7 +118,7 @@ class TTPct2(TT):
 class TTOpLvl(TT):
     values = {0: 'protection', 1: 'automatic', 2: "reduced", 3: "comfort"}
     def get(t):
-        return TTOpLvl.values[t.data[0]] if t.data[0] in TTOpLvl.values else 'unknown'
+        return TTOpLvl.values.get(t.data[0], "unknown")
 
     def set(t, v):
         d = dict((v, k) for k,v in TTOpLvl.values.items())
