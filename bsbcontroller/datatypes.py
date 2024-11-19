@@ -96,6 +96,7 @@ class TTBStatus(TT):
         sel = {
             0x00a6: "HC",
             0x00a7: "partial HC",
+            0x00af: "release HC",
             0x0011: "finishing",
             0x0019: "off",
         }
