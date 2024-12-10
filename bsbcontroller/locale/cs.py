@@ -1,11 +1,3 @@
-
-addr_text = {
-    0x00: "K",
-    0x06: "T",
-    0x7f: "B",
-    0x42: "L",
-}
-
 message_text = {
     "datetime": "Datum",
     "hot_water_status": "Tepla voda",
@@ -34,7 +26,7 @@ message_text = {
     "hc_boiler_status": "Stav kotle (provoz pro TO)",
     "hc_mode": "Stav vytapeni (utl/komfort)",
     "boiler_status": "Stav kotle",
-    "water_pressure": "Tlak vody H1", #9005
+    "water_pressure": "Tlak vody H1",
     "pump_modulation_pct": "Otacky cerpadla",
     "burner_modulation_pct": "Modulace horaku",
     "burner_start_count": "Počet startů 1. stupně",

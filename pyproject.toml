@@ -1,3 +1,6 @@
 [project]
 name = "bsbcontroller"
 version = "0.1.0"
+dependencies = [
+	"pyserial",
+]

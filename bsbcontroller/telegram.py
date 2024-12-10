@@ -1,11 +1,23 @@
 import struct
-import time
+import datetime
+import logging
+import traceback
 
-from . import types
 from .types import Command, Flag
 from .messages import messages, rows
 
-from .locale.cs import message_text, addr_text
+
+logger = logging.getLogger("BSB")
+
+addr_text = {
+    0x00: "K", # Boiler
+    0x06: "T", # 1. thermostat
+    0x07: "U", # 2. thermostat
+    0x08: "V", # 3. thermostat
+    0x7f: "B", # Broadcast
+    0x42: "L", # LAN controller
+}
+
 
 def swap_flags(t):
     return ((t & 0x00ff0000) << 8) | ((t & 0xff000000) >> 8) | (t & 0xffff)
@@ -34,88 +46,133 @@ class Telegram(object):
         return crcval
 
     @classmethod
-    def from_raw(cls, raw: bytes):
+    def from_raw(cls, raw: bytes, timestamp=None):
         if cls._crc(raw[0:-2]) != struct.unpack("!H", raw[-2:])[0]:
             raise CrcError
 
         sof, src, dst, length, cmd = raw[:5]
         param = struct.unpack("!I", raw[5:9])[0]
         param = swap_flags(param) if cmd in [Command.QUR, Command.SET] else param
-        data = raw[9:-2]
+        rawdata = raw[9:-2]
 
         #assert sof == cls.SOF
         #assert cmd in set(Command)
         #assert length == len(raw)
 
-        self = cls(param, data, cmd, dst, src & 0x7F)
+        self = cls(param, rawdata, cmd, dst, src & 0x7F, timestamp, override=False)
         return self
 
     def to_raw(self) -> bytes:
-        flags = bytes()
-        length = 5 + 4 + len(self._data) + 2
-
-        if Flag.FB in self._intflags:
-            length += len(self._flags)
-            flags = self._flags
-
         param = swap_flags(self._param) if self._cmd in [Command.QUR, Command.SET] else self._param
 
-        raw  = bytes([self.SOF, self._src | 0x80, self._dst, length, self._cmd])
+        raw = bytearray([self.SOF, self._src | 0x80, self._dst, 0x0, self._cmd])
         raw += struct.pack("!I", param)
-        raw += flags
-        raw += self._data
+        raw += self._rawdata
+        raw[3] = len(raw) + 2
         raw += struct.pack("!H", self._crc(raw))
-        assert length == len(raw)
-        return raw
+        return bytes(raw)
 
-    def __init__(self, param: int, data = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC):
-        self._time = time.ctime()[4:-5]
+    def __init__(self, param: int, rawdata: bytes = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC, timestamp=None, override=True):
+        if timestamp is None:
+            timestamp = datetime.datetime.now()
+        #self._time = timestamp.ctime()[4:-5]
+        self._time = timestamp.strftime("%d.%m. %H:%M:%S")
         self._param = param
-        self._data = data
+        self._rawdata = rawdata
         self._cmd = cmd
         self._dst = dst
         self._src = src
         self._value = None
         self._flags = bytes()
+        self._index = None
 
-        msg_default = (Flag.NONE, None, "unknown")
+        msg_default = (Flag.FB, None, "unknown")
         msg = messages.get(self._param, msg_default)
-        if True and msg == msg_default:
+        if False and msg == msg_default:
             # Try just with row number only (ignore various flags)
             msg = messages.get(rows.get(self._param & 0xFFFF, None), msg_default)
 
+        if False: # is_indexed?
+            self._index = (self.param >> 24) & 0x3
+
         self._intflags, self._datatype, self._name = msg
-        self.__update_data()
+
+        if override:
+            if self._intflags & Flag.BC:
+                self._dst = 0x7F
+
+            # Override SET to INF
+            if self._intflags & Flag.IF and self._cmd == Command.SET:
+                self._cmd = Command.INF
+
+            if self._intflags & Flag.QI and self._cmd == Command.QUR:
+                self._cmd = Command.QIN
+
+        # HOTFIX for stored data
+        if not override and self._param in [0x3d2d0215] and len(self._rawdata) == 2:
+            self._rawdata += b"\xbe"
+
+        self._rawdata2data()
+        self._update_value()
 
     def set_value(self, value):
         try:
-            self._data = bytes(self._datatype.set(self, value))
-            #self._datatype.set(self, value)
-            if self._intflags & Flag.SIB:
-                self._dst = 0x7F
-                self._cmd = Command.INF
-            self.__update_data()
+            self._data = self._datatype.enc(value)
 
-            #print("SV", list(self._data), self._flags, self._intflags)
+            if self._intflags & Flag.FB:
+                #assert self.cmd == Command.SET
+                self._flags = bytes([0]) if value is None else bytes([1])
+
+            if self._intflags & Flag.LB:
+                #assert self.cmd == Command.INF
+                self._flags = bytes([0]) # TODO: Check this
+
+            self._update_value()
+            self._data2rawdata()
+
         except Exception as e:
-            print("Telegram: set_value error:", e, self)
+            logger.error(f"Telegram.set_value error: {e}, {self}")
+            logger.error(traceback.format_exc())
             return False
         return True
 
-    def __update_data(self):
-        if self._intflags & Flag.FB and self._data:
-            self._flags = self._data[:1]
-            self._data = self._data[1:]
-        elif self._intflags & Flag.LB and self._data:
-            self._flags = self._data[-1:]
-            self._data = self._data[:-1]
+    def _rawdata2data(self):
+        rd = list(self._rawdata)
+        f, d = [], rd
 
-        if self._datatype and self._data:
+        if rd:
+            if self.cmd in [Command.NAK, Command.ERR]:
+                f, d = rd[:1], rd[1:]
+            if self._intflags & Flag.FB:
+                f, d = rd[:1], rd[1:]
+            elif self._intflags & Flag.LB and self.cmd in [Command.INF]:
+                f, d = rd[-1:], rd[:-1]
+        self._flags, self._data = f, d
+
+    def _data2rawdata(self):
+        rd = []
+        if Flag.FB in self._intflags:
+            rd += self._flags
+        rd += self._data
+        if Flag.LB in self._intflags:
+            rd += self._flags
+        self._rawdata = bytes(rd)
+
+    def _update_value(self):
+        if self._data and self._datatype is not None:
             try:
-                #print("UD", self._cmd, self._data, self._datatype)
-                self._value = self._datatype.get(self)
+                self._value = self._datatype.dec(self.data)
+                nullable = False
+                nullable |= bool(self._intflags & Flag.FB) and self.cmd in [Command.ANS, Command.SET]
+                #nullable |= bool(self._intflags & Flag.LB) and self.cmd in [Command.INF]
+                if nullable:
+                    assert len(self._flags) == 1
+                    if self._flags[0] == 0x01:
+                        self._value = None
             except Exception as e:
-                print("Telegram: get_value error:", e, self)
+                logger.error(f"Telegram.get_value error: {e}, {self}")
+                logger.error(f"Intflags: {self._intflags} {self._rawdata}")
+                logger.error(traceback.format_exc())
 
     def __str__(self):
         src = addr_text.get(self._src, f"{self._src:02X}")
@@ -124,10 +181,10 @@ class Telegram(object):
         cmd = Command(self.cmd).name if self.cmd in set(Command) else 'UNK'
         text = self._name
         #text = message_text.get(self._name, self._name)
-        value = self._value if self._value != None else ""
+        value = str(self._value) if self._value is not None else ""
 
-        base = f"{self._time} {src:<2}=>{dst:>2} {cmd} 0x{self._param:08x} {text:<30} {value:<20}"
-        data = " ".join("{:02x}".format(x) for x in list(self._data)) # + "\n" + str(list(self.to_raw()))
+        base = f"{self._time} {src:<2}=>{dst:>2} {cmd} 0x{self._param:08x} {text:<25.25} {value:<20}"
+        data = " ".join("{:02x}".format(x) for x in self._data)
         if self._intflags & Flag.FB and self._flags:
             data = f"|{self._flags[0]:02x}|{data}|"
         elif self._intflags & Flag.LB and self._flags:
@@ -152,9 +209,9 @@ class Telegram(object):
     def param(self) -> int:
         return self._param
 
-    @property
-    def datatype(self):
-        return self._datatype
+    #@property
+    #def datatype(self):
+    #    return self._datatype
 
     @property
     def data(self):

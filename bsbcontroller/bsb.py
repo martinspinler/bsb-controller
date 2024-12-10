@@ -1,19 +1,22 @@
 import time
-import re
 import traceback
 import threading
+import logging
 
 from .driver import BsbDriver
-from .messages import messages, messages_by_name
-from .datatypes import *
+from .messages import messages_by_name
 from .telegram import Telegram, Command
+
+
+logger = logging.getLogger("BSB")
+#logging.basicConfig(level=logging.INFO)
 
 
 class Bsb():
     def __init__(self, port):
         self.callbacks = []
         self.loggers = []
-        self.requests = {} # Monitored request: {name: refresh_time}
+        self.requests = {}  # Monitored request: {name: refresh_time}
 
         self._drv = BsbDriver(port)
         self._requests = []
@@ -32,12 +35,12 @@ class Bsb():
         self._monitor_thread_event.set()
         self._monitor_thread.join()
 
-    def get_value(self, req) -> None:
-        self._requests.append((req, None, False))
+    def get_value(self, req, **kwargs) -> None:
+        self._requests.append((req, None, False, kwargs))
         # TODO: read from return Queue
 
-    def set_value(self, req, value) -> None:
-        self._requests.append((req, value, True))
+    def set_value(self, req, value, **kwargs) -> None:
+        self._requests.append((req, value, True, kwargs))
         # TODO: read from return Queue
 
     def set_monitored(self, monitor: dict) -> None:
@@ -52,14 +55,13 @@ class Bsb():
         while not self._monitor_thread_event.is_set():
             try:
                 telegram = self._get_telegram()
-                if not self._handle_requests() and telegram == None:
+                if not self._handle_requests() and telegram is None:
                     time.sleep(0.1)
                 self._refresh()
                 self._clean_pending_timeout()
             except Exception as e:
-                print(e)
-                print(traceback.format_exc())
-
+                logger.warn("monitor thread: " + str(e))
+                logger.warn(traceback.format_exc())
 
     def _log(self, telegram: Telegram) -> None:
         key = (telegram.name, telegram.src, telegram.dst)
@@ -75,7 +77,7 @@ class Bsb():
                 del self._pending_set[set_key]
                 for cb in self.callbacks:
                     cb(set_key[0], set_value[1])
-            
+
         for cb in self.loggers:
             cb(telegram)
 
@@ -111,47 +113,55 @@ class Bsb():
 
         return telegram
 
-    def _get_value(self, req):
-        get = Telegram(messages_by_name[req])
+    def _get_value(self, req, **kwargs):
+        telegram_kwargs = {}
+        if "src" in kwargs:
+            telegram_kwargs['src'] = kwargs["src"]
+        get = Telegram(messages_by_name[req], **telegram_kwargs)
         if not self._send_telegram(get):
-            print("Can't send telegram")
+            logger.warn(f"get_value: Can't send telegram: {get}")
             return None
-        
+
         timeout = 0
         ret = self._get_telegram()
-        while (ret == None or ret.param != get.param) and timeout < 10:
+        while (ret is None or ret.param != get.param) and timeout < 10:
             ret = self._get_telegram()
             time.sleep(0.1)
             timeout += 1
         if timeout == 10:
-            print("Timeout")
+            logger.error(f"get_value: timeout: {get}")
             return None
         return ret.value
 
-    def _set_value(self, req, value):
+    def _set_value(self, req, value, **kwargs):
         param = messages_by_name[req]
-        telegram = Telegram(param, cmd=Command.SET)
+        cmd = kwargs['cmd'] if "cmd" in kwargs else Command.SET
+        telegram_kwargs = {}
+        if "src" in kwargs:
+            telegram_kwargs['src'] = kwargs['src']
+
+        telegram = Telegram(param, cmd=cmd, **telegram_kwargs)
         if not telegram.set_value(value):
             return False
 
-        #print(telegram.to_raw()
-        print([f"{x:02X}" for x in telegram.to_raw()])
-
         ret = self._send_telegram(telegram)
+        if not ret:
+            return False
+
         if telegram.cmd == Command.INF:
             return True
 
         timeout = 0
         t = self._get_telegram()
-        while (t == None or t.param != param) and timeout < 10:
+        while (t is None or t.param != param) and timeout < 10:
             if t:
-                print(t)
+                logger.info(f"set_value: another telgram received: {t}")
             # TODO: Timeout
             t = self._get_telegram()
             time.sleep(0.1)
             timeout += 1
         if timeout == 10:
-            print("BSB set value: Timeout")
+            logger.error(f"set_value: timeout: {t}")
         return True
 
     def _handle_requests(self) -> bool:
@@ -159,11 +169,11 @@ class Bsb():
             return False
 
         while self._requests:
-            request, value, do_set = self._requests.pop()
+            request, value, do_set, kwargs = self._requests.pop()
             if do_set:
-                self._set_value(request, value)
+                self._set_value(request, value, **kwargs)
             else:
-                self._get_value(request)
+                self._get_value(request, **kwargs)
 
             for cb in self.callbacks:
                 cb(request, value)
@@ -177,9 +187,9 @@ class Bsb():
                 break
             current_time = time.time()
             next_refresh = self._mon_refresh.get(req, 0)
-            if next_refresh != None and current_time >= next_refresh:
-                self._mon_refresh[req] = current_time + interval if interval != None else None
+            if next_refresh is not None and current_time >= next_refresh:
+                self._mon_refresh[req] = current_time + interval if interval is not None else None
                 val = self._get_value(req)
-                if val != None:
+                if val is not None:
                     for cb in self.callbacks:
                         cb(req, val)

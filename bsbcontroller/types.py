@@ -19,11 +19,14 @@ class Command(enum.IntEnum):
     IQ2 = 0x14 # Internal Query 2
     IA2 = 0x15 # Internal Reply 2
 
+
 class Flag(enum.IntFlag):
     NONE = 0
     FB = 1
     LB = 2
-    SIB= 4 # SET value => INF broadcast
+    BC = 4 # DST => broadcast
+    IF = 8 # SET => INF
+    QI = 16
 
 #class Flag(enum.IntFlag):
 #    WRITABLE = 0

@@ -1,11 +1,14 @@
 import time
 import queue
 import traceback
+import logging
 from typing import Optional
-from serial import Serial, PARITY_EVEN, PARITY_ODD
-from struct import unpack
+from serial import Serial, PARITY_ODD
 
 from .telegram import Telegram, CrcError
+
+
+logger = logging.getLogger("BSB")
 
 
 class BsbDriver(object):
@@ -50,28 +53,24 @@ class BsbDriver(object):
             length = buf[3] if len(buf) > 3 else -1
             if len(buf) == length:
                 try:
-                    #print([f"{x:02X}" for x in buf])
                     telegram = Telegram.from_raw(bytes(buf))
                     buf.clear()
                 except CrcError:
-                    print("BSB driver: Telegram CRC Error")
+                    logger.warn(f"driver: Telegram CRC error: {buf}")
                     buf.clear()
                 except Exception as e:
-                    print("BSB driver: Telegram error:", e, buf)
-                    print(traceback.format_exc())
+                    logger.error(f"driver: Telegram error: {e}: {buf}")
+                    logger.error(traceback.format_exc())
                     buf.clear()
                 else:
                     return telegram
 
         if timeout == 0:
-            print("BSB driver: Timeout", buf)
+            logger.warn(f"driver: Timeout {buf}")
             buf.clear()
         return None
 
     def send_telegram(self, telegram: Telegram, retries=10):
-        #print([f"{x:02X}" for x in telegram.to_raw()])
-        #print(telegram)
-        #print([x for x in telegram.to_raw()])
         msg = bytes([x ^ 0xff for x in telegram.to_raw()])
 
         while retries:
@@ -83,13 +82,12 @@ class BsbDriver(object):
             while recv:
                 recv = self._receive_telegram(True)
                 if recv:
-                    #print(list(telegram.to_raw()), list(recv.to_raw()), telegram.to_raw() == recv.to_raw())
                     if telegram.to_raw() == recv.to_raw():
                         return True
                     else:
                         self._ooo_queue.put_nowait(recv)
 
-            time.sleep(2.567)
-            print("BSB driver: sent telegram not received back, resending")
+            time.sleep(1.567)
+            logger.warn(f"driver: sent telegram not received back, resending: {telegram}")
 
         return False
