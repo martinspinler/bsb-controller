@@ -120,7 +120,7 @@ class Bsb():
         get = Telegram(messages_by_name[req], **telegram_kwargs)
         if not self._send_telegram(get):
             logger.warn(f"get_value: Can't send telegram: {get}")
-            return None
+            raise Exception
 
         timeout = 0
         ret = self._get_telegram()
@@ -130,7 +130,7 @@ class Bsb():
             timeout += 1
         if timeout == 10:
             logger.error(f"get_value: timeout: {get}")
-            return None
+            raise Exception
         return ret.value
 
     def _set_value(self, req, value, **kwargs):
@@ -173,7 +173,10 @@ class Bsb():
             if do_set:
                 self._set_value(request, value, **kwargs)
             else:
-                self._get_value(request, **kwargs)
+                try:
+                    self._get_value(request, **kwargs)
+                except Exception:
+                    pass
 
             for cb in self.callbacks:
                 cb(request, value)
@@ -189,7 +192,10 @@ class Bsb():
             next_refresh = self._mon_refresh.get(req, 0)
             if next_refresh is not None and current_time >= next_refresh:
                 self._mon_refresh[req] = current_time + interval if interval is not None else None
-                val = self._get_value(req)
-                if val is not None:
+                try:
+                    val = self._get_value(req)
+                except Exception:
+                    pass
+                else:
                     for cb in self.callbacks:
                         cb(req, val)

@@ -1,5 +1,5 @@
 from .types import Flag
-from .datatypes import TFDate, TFError, TFHCStat, TFHWater, TFStat1, TFStat2, TFOnOff, TFEnable, TFTemp, TFInt8, TF10Float, TFInt16, TFInt32, TFOpLvl, TFCStatus, TFSchedule, TFPct2
+from .datatypes import TFDate, TFError, TFHCStat, TFHWater, TFStatB, TFStatHW, TFOnOff, TFEnable, TFTemp, TFInt8, TF10Float, TFInt16, TFInt32, TFOpMode, TFCStatus, TFSchedule, TFPct2
 
 
 FB = Flag.FB
@@ -32,12 +32,12 @@ messages = {
     0x2f3f0211: (NN, TFHCStat,  "hc3_status_qa"),
     0x31000212: (FB, TFHWater,  "hot_water_status"), # This is for INF. For QUR and ANS is used 0x313d0212
     0x313d0212: (FB, TFHWater,  "hot_water_status_qa"),
-    0x05000213: (NN, TFStat1,   "status_msg1"),
-    0x053d0213: (NN, TFStat1,   "status_msg1"), # Request from T1
+    0x05000213: (NN, TFStatB,   "status_burner"),
+    0x053d0213: (NN, TFStatB,   "status_burner"), # Request from T1
     0x3d2d0215: (LI, TFTemp,    "room1_temp_status"), # This is for INF T->K
     0x3e2e0215: (LI, TFTemp,    "room2_temp_status"),
-    0x05000219: (NN, TFStat2,   "status_msg2"),
-    0x053d0219: (NN, TFStat2,   "status_msg2_qa"), # REquest from T1
+    0x05000219: (NN, TFStatHW,  "status_hw"),
+    0x053d0219: (NN, TFStatHW,  "status_hw_qa"), # Request from T1
     #0x053d0219: The same, but as ans to QUR
     0x053d0236: (FB, TFOnOff,   "standby"),
     0x053d04c0: (FB, TFEnable,  "hc1_enabled"),
@@ -55,8 +55,8 @@ messages = {
     0x053d056e: (FB, TFTemp,    "outer_temp_max"),
     0x313d0571: (FB, TFOnOff,   "hot_water_operating_mode"),
     0x313d0573: (FB, TFOnOff,   "hot_water_push"),
-    0x2d3d0574: (FB, TFOpLvl,   "hc1_operating_level"), # operating_mode
-    0x2e3d0574: (FB, TFOpLvl,   "hc2_operating_level"),
+    0x2d3d0574: (FB, TFOpMode,  "hc1_operating_mode"),
+    0x2e3d0574: (FB, TFOpMode,  "hc2_operating_mode"),
     0x2d3d058e: (FB, TFTemp,    "room1_req_comfort_temp"),
     0x2e3d058e: (FB, TFTemp,    "room2_req_comfort_temp"),
     0x2d3d0590: (FB, TFTemp,    "room1_req_reduced_temp"),

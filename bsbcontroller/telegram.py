@@ -167,7 +167,7 @@ class Telegram(object):
                 #nullable |= bool(self._intflags & Flag.LB) and self.cmd in [Command.INF]
                 if nullable:
                     assert len(self._flags) == 1
-                    if self._flags[0] == 0x01:
+                    if (self._flags[0] == 0x01 and self.cmd == Command.ANS):  # TODO: Command.SET ?
                         self._value = None
             except Exception as e:
                 logger.error(f"Telegram.get_value error: {e}, {self}")

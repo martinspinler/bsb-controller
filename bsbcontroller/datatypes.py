@@ -2,7 +2,7 @@ import abc
 import inspect
 import re
 from struct import pack, unpack
-from dataclasses import dataclass
+from dataclasses import dataclass, InitVar
 
 import datetime
 
@@ -100,7 +100,7 @@ class TFCStatus(TFEnum): # also for boiler_status
     }
 
 
-class TFOpLvl(TFEnum):
+class TFOpMode(TFEnum):
     values = {
         0: 'protection',
         1: 'automatic',
@@ -167,7 +167,7 @@ class TFHWater(TF):
         return s
 
 
-class TFStat1(TF):
+class TFStatB(TF):
     def dec(data):
         return "Burner: {0}".format(2 if data[0] & 0x10 else (1 if data[0] & 0x04 else 0))
 
@@ -193,7 +193,7 @@ class TFPlan(TF):
 
 
 @dataclass
-class TFStat2(TF):
+class TFStatHW(TF):
     stby: bool
     outdoor_temp: float
     water_pressure: float
@@ -215,25 +215,28 @@ class TFStat2(TF):
 @dataclass
 class TFHCStat(TF):
     mode: str
-    reduced: bool
-    comfort: bool
+    current: str
     plan: TFPlan
+    running: bool
+
+    current_values: InitVar[dict[int, str]] = {
+        0: 'protection',
+        1: 'reduced',
+        2: 'comfort',
+    }
 
     def __str__(self):
-        return f"mode: {self.mode} red: {self.reduced:>1} plan: {self.plan}"
+        return f"mode: {self.mode} cur: {self.current} run: {self.running} plan: {self.plan}"
 
     @classmethod
     def dec(cls, data):
         return cls(
-            TFOpLvl.dec(data[0:1]),
-            data[1] == 0x01,
-            data[1] == 0x02,
+            TFOpMode.dec(data[0:1]),                    # Currently selected mode
+            cls.current_values.get(data[1], 'unknown'), # Mode applied by schedule
             TFPlan.dec(data[2:8]),
+            data[8] == 0x02                             # Boiler is running (for some HC)?
         )
         # TODO: Check
-        #manual_set = bool(data[1] & 0x02)
-        #unknown = bool(data[1] & 0x01)
-        #running = bool(data[8] & 0x02)
         #unknown2 = data[9]
 
 
