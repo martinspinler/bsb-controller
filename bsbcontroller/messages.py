@@ -67,10 +67,12 @@ messages = {
     0x2d3d05a5: (FB, TFTemp,    "hc1_temp_comfort_max"),
     0x2d3d05f6: (FB, None,      "hc1_curve_steep"),
     0x2d3d0603: (FB, TFInt8,    "hc1_room_influence_ptc"),
+    0x2e3d0603: (FB, TFInt8,    "hc2_room_influence_ptc"),
     0x2d3d060b: (FB, TFEnable,  "hc1_curve_adaptation"),
     0x2d3d0610: (FB, None,      "hc1_curve_offset"),
     0x3d210662: (FB, TFTemp,    "hc1_rampup_temp"),
     0x213d0662: (FB, TFTemp,    "hc1_rampup_max_temp"),
+    0x223d0662: (FB, TFTemp,    "hc2_rampup_max_temp"),
     0x313d06b9: (FB, TFTemp,    "req_hot_water_nominal_temp"),
     0x313d06ba: (FB, TFTemp,    "req_hot_water_reduced_temp"),
     0x053d06e8: (NN, None,      "phone_number"), # 30 30 30 30 30 30 31 31 30 30 30 00 00 00 00 00
@@ -94,6 +96,7 @@ messages = {
     0x053d09a5: (FB, TFEnable,  "hc1_pump"),
     0x053d0a73: (FB, TFEnable,  "cc1_enabled"), # cooling circuit
     0x213d0a88: (FB, TFTemp,    "hc1_flow_temp_setpoint_room_stat"), # FIXME
+    0x223d0a88: (FB ,TFTemp,    "hc2_zadana_teplota_nabehu_prostoroveho_termostatu"),
     **(lambda TFSchedule=TFSchedule: {0x053d0a8c + i: (NN, TFSchedule, "hc1_time_prog_{0}".format(i2d[i])) for i in range(7)})(),
     **(lambda TFSchedule=TFSchedule: {0x053d0aa0 + i: (NN, TFSchedule, "hot_water_time_prog_{0}".format(i2d[i])) for i in range(7)})(),
     0x093d0dfd: (FB, TFCStatus, "burner_current_phase"), # [0x10] = modulace, 4=STY, 2=TLO?

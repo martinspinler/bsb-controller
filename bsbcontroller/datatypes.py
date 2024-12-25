@@ -85,6 +85,7 @@ class TFCStatus(TFEnum): # also for boiler_status
         0x5d: "charging_forced", # vynucene nabijeni, zadana T
         0x60: "charging_to_req_temp", # Nabijeni, jmen. zadana teplota
         0x63: "nabito_jmenovita_teplota", # charged_nominal_temp
+        0x68: "omezeno_prednost_hw",
         0x6e: "forced_circulation",
         0x72: "heat_comfort", # on_heating_mode! (Prelozeno jako Rezim vytapeni komfort)
         0x74: "heat_reduced", # reduced_heating_mode, Tlumeny provoz vytapeni
