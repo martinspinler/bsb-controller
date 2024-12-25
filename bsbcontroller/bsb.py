@@ -1,7 +1,9 @@
 import time
+import queue
 import traceback
 import threading
 import logging
+import concurrent.futures
 
 from .driver import BsbDriver
 from .messages import messages_by_name
@@ -27,6 +29,7 @@ class Bsb():
         self._monitor_thread = threading.Thread(target=self._monitor)
 
         self._pending_set = {}
+        self._tpe = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     def start(self):
         self._monitor_thread.start()
@@ -36,12 +39,15 @@ class Bsb():
         self._monitor_thread.join()
 
     def get_value(self, req, **kwargs) -> None:
-        self._requests.append((req, None, False, kwargs))
-        # TODO: read from return Queue
+        q = queue.Queue()
+        self._requests.append((req, None, False, kwargs, q))
+        val = q.get()
+        return val
 
     def set_value(self, req, value, **kwargs) -> None:
-        self._requests.append((req, value, True, kwargs))
-        # TODO: read from return Queue
+        q = queue.Queue()
+        self._requests.append((req, value, True, kwargs, q))
+        return q.get()
 
     def set_monitored(self, monitor: dict) -> None:
         for key in monitor:
@@ -76,10 +82,10 @@ class Bsb():
             if set_value:
                 del self._pending_set[set_key]
                 for cb in self.callbacks:
-                    cb(set_key[0], set_value[1])
+                    self._tpe.submit(cb, set_key[0], set_value[1])
 
         for cb in self.loggers:
-            cb(telegram)
+            self._tpe.submit(cb, telegram)
 
     def _clean_pending_timeout(self):
         clear = []
@@ -128,7 +134,7 @@ class Bsb():
             ret = self._get_telegram()
             time.sleep(0.1)
             timeout += 1
-        if timeout == 10:
+        if timeout >= 10:
             logger.error(f"get_value: timeout: {get}")
             raise Exception
         return ret.value
@@ -155,7 +161,7 @@ class Bsb():
         t = self._get_telegram()
         while (t is None or t.param != param) and timeout < 10:
             if t:
-                logger.info(f"set_value: another telgram received: {t}")
+                logger.info(f"set_value: another telegram received: {t}")
             # TODO: Timeout
             t = self._get_telegram()
             time.sleep(0.1)
@@ -169,17 +175,32 @@ class Bsb():
             return False
 
         while self._requests:
-            request, value, do_set, kwargs = self._requests.pop()
-            if do_set:
-                self._set_value(request, value, **kwargs)
-            else:
-                try:
-                    self._get_value(request, **kwargs)
-                except Exception:
-                    pass
+            try:
+                request, value, do_set, kwargs, q = self._requests.pop()
+            except:
+                logger.warn("handle request GET: " + str(e))
+                logger.warn(traceback.format_exc())
+                continue
 
-            for cb in self.callbacks:
-                cb(request, value)
+            ret = None
+            try:
+                if do_set:
+                    self._set_value(request, value, **kwargs)
+                else:
+                    ret = self._get_value(request, **kwargs)
+            except Exception as e:
+                q.put(Exception(e))
+                raise e
+            else:
+                q.put(ret)
+
+            try:
+                for cb in self.callbacks:
+                    self._tpe.submit(cb, request, value)
+            except Exception as e:
+                logger.warn("handle request: " + str(e))
+                logger.warn(traceback.format_exc())
+
         return True
 
     def _refresh(self):
@@ -194,8 +215,9 @@ class Bsb():
                 self._mon_refresh[req] = current_time + interval if interval is not None else None
                 try:
                     val = self._get_value(req)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warn("refresh - get_value: " + str(e))
+                    logger.warn(traceback.format_exc())
                 else:
                     for cb in self.callbacks:
-                        cb(req, val)
+                        self._tpe.submit(cb, req, val)
