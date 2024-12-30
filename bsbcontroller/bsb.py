@@ -182,17 +182,16 @@ class Bsb():
                 logger.warn(traceback.format_exc())
                 continue
 
-            ret = None
             try:
                 if do_set:
                     self._set_value(request, value, **kwargs)
                 else:
-                    ret = self._get_value(request, **kwargs)
+                    value = self._get_value(request, **kwargs)
             except Exception as e:
                 q.put(Exception(e))
                 raise e
             else:
-                q.put(ret)
+                q.put(value)
 
             try:
                 for cb in self.callbacks:
