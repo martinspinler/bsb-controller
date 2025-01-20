@@ -3,6 +3,7 @@ import datetime
 import logging
 import traceback
 
+from typing import Any
 from .types import Command, Flag
 from .messages import messages, rows
 
@@ -19,7 +20,7 @@ addr_text = {
 }
 
 
-def swap_flags(t):
+def swap_flags(t: int) -> int:
     return ((t & 0x00ff0000) << 8) | ((t & 0xff000000) >> 8) | (t & 0xffff)
 
 
@@ -46,12 +47,13 @@ class Telegram(object):
         return crcval
 
     @classmethod
-    def from_raw(cls, raw: bytes, timestamp=None):
+    def from_raw(cls, raw: bytes, timestamp: datetime.datetime | None = None) -> "Telegram":
         if cls._crc(raw[0:-2]) != struct.unpack("!H", raw[-2:])[0]:
             raise CrcError
 
         sof, src, dst, length, cmd = raw[:5]
         param = struct.unpack("!I", raw[5:9])[0]
+        cmd = Command(cmd)
         param = swap_flags(param) if cmd in [Command.QUR, Command.SET] else param
         rawdata = raw[9:-2]
 
@@ -72,7 +74,7 @@ class Telegram(object):
         raw += struct.pack("!H", self._crc(raw))
         return bytes(raw)
 
-    def __init__(self, param: int, rawdata: bytes = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC, timestamp=None, override=True):
+    def __init__(self, param: int, rawdata: bytes = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC, timestamp: datetime.datetime | None = None, override: bool = True):
         if timestamp is None:
             timestamp = datetime.datetime.now()
         #self._time = timestamp.ctime()[4:-5]
@@ -82,7 +84,7 @@ class Telegram(object):
         self._cmd = cmd
         self._dst = dst
         self._src = src
-        self._value = None
+        self._value: Any = None
         self._flags = bytes()
         self._index = None
 
@@ -95,6 +97,7 @@ class Telegram(object):
         if False: # is_indexed?
             self._index = (self.param >> 24) & 0x3
 
+        self._intflags: Flag
         self._intflags, self._datatype, self._name = msg
 
         if override:
@@ -115,8 +118,10 @@ class Telegram(object):
         self._rawdata2data()
         self._update_value()
 
-    def set_value(self, value):
+    def set_value(self, value: Any) -> bool:
         try:
+            if self._datatype is None:
+                raise Exception("Can't set telegram with no value type")
             self._data = self._datatype.enc(value)
 
             if self._intflags & Flag.FB:
@@ -136,7 +141,7 @@ class Telegram(object):
             return False
         return True
 
-    def _rawdata2data(self):
+    def _rawdata2data(self) -> None:
         rd = list(self._rawdata)
         f, d = [], rd
 
@@ -147,18 +152,18 @@ class Telegram(object):
                 f, d = rd[:1], rd[1:]
             elif self._intflags & Flag.LB and self.cmd in [Command.INF]:
                 f, d = rd[-1:], rd[:-1]
-        self._flags, self._data = f, d
+        self._flags, self._data = bytes(f), d
 
-    def _data2rawdata(self):
-        rd = []
+    def _data2rawdata(self) -> None:
+        rd = bytes()
         if Flag.FB in self._intflags:
             rd += self._flags
-        rd += self._data
+        rd += bytes(self._data)
         if Flag.LB in self._intflags:
             rd += self._flags
-        self._rawdata = bytes(rd)
+        self._rawdata = rd
 
-    def _update_value(self):
+    def _update_value(self) -> None:
         if self._data and self._datatype is not None:
             try:
                 self._value = self._datatype.dec(self.data)
@@ -171,10 +176,10 @@ class Telegram(object):
                         self._value = None
             except Exception as e:
                 logger.error(f"Telegram.get_value error: {e}, {self}")
-                logger.error(f"Intflags: {self._intflags} {self._rawdata}")
+                logger.error(f"Intflags: {self._intflags}, rawdata: {list(self._rawdata)}")
                 logger.error(traceback.format_exc())
 
-    def __str__(self):
+    def __str__(self) -> str:
         src = addr_text.get(self._src, f"{self._src:02X}")
         dst = addr_text.get(self._dst, f"{self._dst:02X}")
 
@@ -214,13 +219,13 @@ class Telegram(object):
     #    return self._datatype
 
     @property
-    def data(self):
+    def data(self) -> list[int]:
         return self._data
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name
 
     @property
-    def value(self):
+    def value(self) -> Any:
         return self._value

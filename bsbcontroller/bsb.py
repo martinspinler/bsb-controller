@@ -1,5 +1,7 @@
 import time
 import queue
+from typing import Optional, Tuple, Any
+from collections.abc import Callable
 import traceback
 import threading
 import logging
@@ -7,7 +9,8 @@ import concurrent.futures
 
 from .driver import BsbDriver
 from .messages import messages_by_name
-from .telegram import Telegram, Command
+from .types import Command
+from .telegram import Telegram
 
 
 logger = logging.getLogger("BSB")
@@ -15,41 +18,45 @@ logger = logging.getLogger("BSB")
 
 
 class Bsb():
-    def __init__(self, port):
-        self.callbacks = []
-        self.loggers = []
-        self.requests = {}  # Monitored request: {name: refresh_time}
+    def __init__(self, port: str):
+        self.callbacks: list[Callable[[str, Any], None]] = []
+        self.loggers: list[Callable[[Telegram], None]] = []
+        self.requests: dict[str, int] = {}  # Monitored request: {name: refresh_time}
 
         self._drv = BsbDriver(port)
-        self._requests = []
-        self._mon_requests = {}
-        self._mon_refresh = {}
+        self._requests: list[tuple[str, Optional[Any], bool, dict[str, Any], queue.Queue[Any]]] = []
+        self._mon_requests: dict[str, int | None] = {}
+        self._mon_refresh: dict[str, int | float] = {}
 
         self._monitor_thread_event = threading.Event()
         self._monitor_thread = threading.Thread(target=self._monitor)
 
-        self._pending_set = {}
+        self._pending_set: dict[tuple[str, int, int], tuple[int|float, Any]] = {}
         self._tpe = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
-    def start(self):
+    def start(self) -> None:
         self._monitor_thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         self._monitor_thread_event.set()
         self._monitor_thread.join()
 
-    def get_value(self, req, **kwargs) -> None:
-        q = queue.Queue()
+    def get_value(self, req: str, src: int = Telegram.DEF_SRC) -> Any:
+        kwargs = {'src': src}
+        q: queue.Queue[Any] = queue.Queue()
         self._requests.append((req, None, False, kwargs, q))
         val = q.get()
         return val
 
-    def set_value(self, req, value, **kwargs) -> None:
-        q = queue.Queue()
+    def set_value(self, req: str, value: Any, cmd: Command=Command.SET, src: int = Telegram.DEF_SRC) -> None:
+        kwargs = {'src': src, 'cmd': cmd}
+        q: queue.Queue[Any] = queue.Queue()
         self._requests.append((req, value, True, kwargs, q))
-        return q.get()
+        v = q.get()
+        if isinstance(v, Exception):
+            raise v
 
-    def set_monitored(self, monitor: dict) -> None:
+    def set_monitored(self, monitor: dict[str, int|None]) -> None:
         for key in monitor:
             # Check if message exists
             messages_by_name[key]
@@ -81,13 +88,13 @@ class Bsb():
             set_value = self._pending_set.get(set_key, None)
             if set_value:
                 del self._pending_set[set_key]
-                for cb in self.callbacks:
-                    self._tpe.submit(cb, set_key[0], set_value[1])
+                for cb_c in self.callbacks:
+                    self._tpe.submit(cb_c, set_key[0], set_value[1])
 
-        for cb in self.loggers:
-            self._tpe.submit(cb, telegram)
+        for cb_l in self.loggers:
+            self._tpe.submit(cb_l, telegram)
 
-    def _clean_pending_timeout(self):
+    def _clean_pending_timeout(self) -> None:
         clear = []
         current_time = time.time()
         for pending in self._pending_set.items():
@@ -97,7 +104,7 @@ class Bsb():
         for item in clear:
             del self._pending_set[item]
 
-    def _flush_input(self):
+    def _flush_input(self) -> None:
         while True:
             telegram = self._get_telegram(wait=True)
             if not telegram:
@@ -111,7 +118,7 @@ class Bsb():
             return True
         return False
 
-    def _get_telegram(self, wait=True):
+    def _get_telegram(self, wait: bool = True) -> Optional[Telegram]:
         telegram = self._drv.receive_telegram(wait)
 
         if telegram:
@@ -119,34 +126,27 @@ class Bsb():
 
         return telegram
 
-    def _get_value(self, req, **kwargs):
-        telegram_kwargs = {}
-        if "src" in kwargs:
-            telegram_kwargs['src'] = kwargs["src"]
-        get = Telegram(messages_by_name[req], **telegram_kwargs)
+    def _get_value(self, req: str, src: int = Telegram.DEF_SRC) -> Any:
+        get = Telegram(messages_by_name[req], src=src)
         if not self._send_telegram(get):
             logger.warn(f"get_value: Can't send telegram: {get}")
             raise Exception
 
         timeout = 0
         ret = self._get_telegram()
-        while (ret is None or ret.param != get.param) and timeout < 10:
+        while ret is None or ret.param != get.param:
             ret = self._get_telegram()
             time.sleep(0.1)
             timeout += 1
-        if timeout >= 10:
-            logger.error(f"get_value: timeout: {get}")
-            raise Exception
+            if timeout >= 10:
+                logger.error(f"get_value: timeout: {get}")
+                raise Exception
+
         return ret.value
 
-    def _set_value(self, req, value, **kwargs):
+    def _set_value(self, req: str, value: Any, cmd: Command=Command.SET, src: int = Telegram.DEF_SRC) -> bool:
         param = messages_by_name[req]
-        cmd = kwargs['cmd'] if "cmd" in kwargs else Command.SET
-        telegram_kwargs = {}
-        if "src" in kwargs:
-            telegram_kwargs['src'] = kwargs['src']
-
-        telegram = Telegram(param, cmd=cmd, **telegram_kwargs)
+        telegram = Telegram(param, cmd=cmd, src=src)
         if not telegram.set_value(value):
             return False
 
@@ -177,7 +177,7 @@ class Bsb():
         while self._requests:
             try:
                 request, value, do_set, kwargs, q = self._requests.pop()
-            except:
+            except Exception as e:
                 logger.warn("handle request GET: " + str(e))
                 logger.warn(traceback.format_exc())
                 continue
@@ -202,7 +202,7 @@ class Bsb():
 
         return True
 
-    def _refresh(self):
+    def _refresh(self) -> None:
         requests = self._mon_requests
 
         for req, interval in requests.items():

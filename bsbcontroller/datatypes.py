@@ -1,13 +1,14 @@
 import abc
 import inspect
 import re
+from typing import Type, Optional, Tuple, List, Any, TypeVar, ClassVar
 from struct import pack, unpack
-from dataclasses import dataclass, InitVar
+from dataclasses import dataclass
 
 import datetime
 
 
-def clamp(n, smallest, largest):
+def clamp(n: int, smallest: int, largest: int) -> int:
     return max(smallest, min(n, largest))
 
 
@@ -17,49 +18,53 @@ class TF(abc.ABC):
     #01 when setting the value of a non-nullable field;
     #05 when setting a value for a nullable field;
     #06 when setting a nullable field to NULL (in this case, the <value> byte will be ignored).
-    #@staticmethod
-    #@abc.abstractmethod
-    def dec(data: list[int]):
+    @classmethod
+    @abc.abstractmethod
+    def dec(cls, data: list[int]) -> Any:
         ...
 
-    #@staticmethod
-    #@abc.abstractmethod
-    def enc(value) -> list[int]:
+    @classmethod
+    @abc.abstractmethod
+    def enc(cls, value: Any) -> list[int]:
         ...
 
 
 class TFTemp(TF):
-    def dec(data):
-        return unpack("!h", bytes(data[0:2]))[0] / 64
+    @classmethod
+    def dec(cls, data: list[int]) -> float:
+        return int(unpack("!h", bytes(data[0:2]))[0]) / 64
 
-    def enc(value):
+    @classmethod
+    def enc(cls, value: float | None) -> list[int]:
         return list(pack("!h", 0 if value is None else int(value * 64)))
 
 
 class TFOnOff(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> bool:
         return data[0] > 0
 
-    def enc(value):
+    @classmethod
+    def enc(cls, value: bool) -> list[int]:
         return [1 if value else 0]
 
 
 class TFEnum(TF):
-    values = {}
+    values: dict[int, Any] = {}
     offset = 0
-    unknown = "unknown"
+    unknown: str|Type[Exception]="unknown"
 
     _values_rev = None
 
     @classmethod
-    def dec(cls, data):
+    def dec(cls, data: list[int]) -> Any:
         ret = cls.values.get(data[cls.offset], cls.unknown)
         if inspect.isclass(ret) and issubclass(ret, Exception):
             raise ret
         return ret
 
     @classmethod
-    def enc(cls, value):
+    def enc(cls, value: Any) -> list[int]:
         if cls._values_rev is None:
             cls._values_rev = dict((v, k) for k, v in cls.values.items())
         return [cls._values_rev[value]]
@@ -67,7 +72,7 @@ class TFEnum(TF):
 
 class TFEnable(TFEnum):
     unknown = Exception
-    values = {
+    values: dict[int, bool] = {
         0xFF: True,
         0x00: False,
     }
@@ -111,24 +116,29 @@ class TFOpMode(TFEnum):
 
 
 class TFInt8(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> int:
         return data[0]
 
 
 class TFPct2(TF):
-    def dec(data):
-        return unpack("!H", data[0:2])[0] / 100.0
+    @classmethod
+    def dec(cls, data: list[int]) -> float:
+        return int(unpack("!H", bytes(data[0:2]))[0]) / 100.0
 
 
 class TFDate(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> str:
         _, Y, M, D, d, h, m, s, _ = data
         return f"{D:02}.{M:02}.{Y + 1900:02} {h:02}:{m:02}:{s:02}"
 
-    def enc(v):
-        if isinstance(v, str):
+    @classmethod
+    def enc(cls, value: Any) -> list[int]:
+        v = value
+        if isinstance(value, str):
             date_format = '%Y-%m-%d %H:%M:%S'
-            v = datetime.datetime.strptime(v, date_format)
+            v = datetime.datetime.strptime(value, date_format)
 
         if isinstance(v, datetime.datetime):
             return [0, v.year - 1900, v.month, v.day, (v.weekday() + 1) % 7, v.hour, v.minute, v.second, 0]
@@ -137,22 +147,26 @@ class TFDate(TF):
 
 
 class TFInt32(TF):
-    def dec(data):
-        return unpack("!I", bytes(data[0:4]))[0]
+    @classmethod
+    def dec(cls, data: list[int]) -> int:
+        return int(unpack("!I", bytes(data[0:4]))[0])
 
 
 class TFInt16(TF):
-    def dec(data):
-        return unpack("!H", bytes(data[0:2]))[0]
+    @classmethod
+    def dec(cls, data: list[int]) -> int:
+        return int(unpack("!H", bytes(data[0:2]))[0])
 
 
 class TF10Float(TF):
-    def dec(data):
-        return unpack("!H", bytes(data[0:2]))[0] / 10.0
+    @classmethod
+    def dec(cls, data: list[int]) -> float:
+        return int(unpack("!H", bytes(data[0:2]))[0]) / 10.0
 
 
 class TFError(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> str:
         errno = data[1]
         if data == [0x7f, 0x06]:
             return f"{errno}: Legionelni teplota"
@@ -162,27 +176,30 @@ class TFError(TF):
 
 
 class TFHWater(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> str:
         s = ("charging" if data[1] & 0x08 else "ready")
         s += ("" if data[1] & 0x04 else ", stby") # Also status byte is 0 in stby mode?
         return s
 
 
 class TFStatB(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> str:
+        # data[3] == 0x59: enabled for HC1, 0x5B: enabled for HC2 + HC1
         return "Burner: {0}".format(2 if data[0] & 0x10 else (1 if data[0] & 0x04 else 0))
 
 
 @dataclass
 class TFPlan(TF):
-    plan: list[tuple[datetime.time]]
+    plan: list[Optional[tuple[datetime.time, datetime.time]]]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return " ".join(["{0}-{1}".format(p[0].strftime("%H:%M"), p[1].strftime("%H:%M")) if p is not None else "" for p in self.plan])
 
     @classmethod
-    def dec(cls, data: list):
-        plan = []
+    def dec(cls, data: list[int]) -> "TFPlan":
+        plan: list[Optional[tuple[datetime.time, datetime.time]]] = []
         for i in [0, 2, 4]:
             if data[i] == 0xFF:
                 plan.append(None)
@@ -200,11 +217,11 @@ class TFStatHW(TF):
     water_pressure: float
     plan: TFPlan
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"OT: {self.outdoor_temp:5.1f}, WP: {self.water_pressure:.1f} Stby: {self.stby} Plan: {self.plan}"
 
     @classmethod
-    def dec(cls, data):
+    def dec(cls, data: list[int]) -> "TFStatHW":
         return cls(
             bool(data[10] & 0x08),
             TFTemp.dec(data[0:2]),
@@ -220,20 +237,20 @@ class TFHCStat(TF):
     plan: TFPlan
     running: bool
 
-    current_values: InitVar[dict[int, str]] = {
+    current_values: ClassVar[dict[int, str]] = {
         0: 'protection',
         1: 'reduced',
         2: 'comfort',
     }
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"mode: {self.mode} cur: {self.current} run: {self.running} plan: {self.plan}"
 
     @classmethod
-    def dec(cls, data):
+    def dec(cls, data: list[int]) -> "TFHCStat":
         return cls(
             TFOpMode.dec(data[0:1]),                    # Currently selected mode
-            cls.current_values.get(data[1], 'unknown'), # Mode applied by schedule
+            TFHCStat.current_values.get(data[1], 'unknown'), # Mode applied by schedule
             TFPlan.dec(data[2:8]),
             data[8] == 0x02                             # Boiler is running (for some HC)?
         )
@@ -242,22 +259,24 @@ class TFHCStat(TF):
 
 
 class TFSchedule(TF):
-    def dec(data):
+    @classmethod
+    def dec(cls, data: list[int]) -> str:
         groups = [data[(i * 4):(i * 4 + 4)] for i in range(3)]
         return " ".join(["{0:02}:{1:02}-{2:02}:{3:02}".format(*time[0:4]) for time in groups if not (time[0] & 0x80)])
 
-    def enc(value):
+    @classmethod
+    def enc(cls, value: Any) -> list[int]:
         ret = []
         match = re.findall(r'(\d+):(\d+)-(\d+):(\d+)', value)
         if not match:
-            return None
+            raise Exception("Can't parse time from schedule")
         for i in range(3):
             if len(match) > i:
                 h1, m1, h2, m2 = [int(x) for x in match[i]]
                 if clamp(h1, 0, 23) != h1 or clamp(h2, 0, 23) != h2 or clamp(m1, 0, 59) != m1 or clamp(m2, 0, 59) != m2:
-                    return None
+                    raise Exception("Can't parse time from schedule")
                 if h1 * 60 + m1 > h2 * 60 + m2:
-                    return None
+                    raise Exception("Can't parse time from schedule")
                 ret += [h1, m1, h2, m2]
             else:
                 ret += [0x80, 0, 0, 0]

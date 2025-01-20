@@ -15,22 +15,22 @@ class BsbDriver(object):
     BAUD = 4800
     BYTE_TIME = 1 / (BAUD / 11.0)
 
-    def __init__(self, port):
+    def __init__(self, port: str):
         # Timeout if nothing received for ten characters (11 for start+8b+parity+stop bits)
         TIMEOUT = 1. / (self.BAUD / 11) * 10
 
-        self._buffer = []
-        self._ooo_queue = queue.Queue()
+        self._buffer: list[int] = []
+        self._ooo_queue: queue.Queue[Telegram] = queue.Queue()
 
         self._serial = Serial(port, self.BAUD, timeout=TIMEOUT, parity=PARITY_ODD)
 
-    def receive_telegram(self, wait=True) -> Optional[Telegram]:
+    def receive_telegram(self, wait: bool = True) -> Optional[Telegram]:
         if not self._ooo_queue.empty():
             return self._ooo_queue.get_nowait()
 
         return self._receive_telegram(wait)
 
-    def _receive_telegram(self, wait=True) -> Optional[Telegram]:
+    def _receive_telegram(self, wait: bool = True) -> Optional[Telegram]:
         TIMEOUT = 20
 
         timeout = TIMEOUT
@@ -70,7 +70,7 @@ class BsbDriver(object):
             buf.clear()
         return None
 
-    def send_telegram(self, telegram: Telegram, retries=10):
+    def send_telegram(self, telegram: Telegram, retries: int = 10) -> bool:
         msg = bytes([x ^ 0xff for x in telegram.to_raw()])
 
         while retries:
@@ -78,7 +78,7 @@ class BsbDriver(object):
             time.sleep(self.BYTE_TIME * len(msg) * 2)
             retries -= 1
 
-            recv = telegram
+            recv: Optional[Telegram] = telegram
             while recv:
                 recv = self._receive_telegram(True)
                 if recv:

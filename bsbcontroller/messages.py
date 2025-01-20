@@ -97,8 +97,8 @@ messages = {
     0x053d0a73: (FB, TFEnable,  "cc1_enabled"), # cooling circuit
     0x213d0a88: (FB, TFTemp,    "hc1_flow_temp_setpoint_room_stat"), # FIXME
     0x223d0a88: (FB ,TFTemp,    "hc2_zadana_teplota_nabehu_prostoroveho_termostatu"),
-    **(lambda TFSchedule=TFSchedule: {0x053d0a8c + i: (NN, TFSchedule, "hc1_time_prog_{0}".format(i2d[i])) for i in range(7)})(),
-    **(lambda TFSchedule=TFSchedule: {0x053d0aa0 + i: (NN, TFSchedule, "hot_water_time_prog_{0}".format(i2d[i])) for i in range(7)})(),
+    **{0x053d0a8c + i: (NN, TFSchedule, "hc1_time_prog_{0}".format(i2d[i])) for i in range(7)},
+    **{0x053d0aa0 + i: (NN, TFSchedule, "hot_water_time_prog_{0}".format(i2d[i])) for i in range(7)},
     0x093d0dfd: (FB, TFCStatus, "burner_current_phase"), # [0x10] = modulace, 4=STY, 2=TLO?
     0x093d0e00: (FB, TFPct2,    "fan_modulation_pct"),
     0x093d0e16: (FB, TFInt16,   "burner_ionisation_current"), # Vydel 100 a mas hodnotu v uA
