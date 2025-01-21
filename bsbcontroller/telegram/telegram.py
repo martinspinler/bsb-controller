@@ -5,7 +5,8 @@ import traceback
 
 from typing import Any
 from .types import Command, Flag
-from .messages import messages, rows
+from .message import Message
+#from .messages import messages, rows
 
 
 logger = logging.getLogger("BSB")
@@ -33,6 +34,8 @@ class Telegram(object):
     DEF_SRC = 0x42
     DEF_DST = 0x00
 
+    UNKNOWN_MESSAGE = Message(0xFFFFFFFF, Flag.FB, None, "unknown")
+
     @staticmethod
     def _crc(raw: bytes) -> int:
         crcval = 0
@@ -47,7 +50,7 @@ class Telegram(object):
         return crcval
 
     @classmethod
-    def from_raw(cls, raw: bytes, timestamp: datetime.datetime | None = None) -> "Telegram":
+    def from_raw(cls, raw: bytes, messages_by_id: dict[int, Message], timestamp: datetime.datetime | None = None) -> "Telegram":
         if cls._crc(raw[0:-2]) != struct.unpack("!H", raw[-2:])[0]:
             raise CrcError
 
@@ -60,8 +63,9 @@ class Telegram(object):
         #assert sof == cls.SOF
         #assert cmd in set(Command)
         #assert length == len(raw)
+        msg = messages_by_id.get(param, cls.UNKNOWN_MESSAGE)
 
-        self = cls(param, rawdata, cmd, dst, src & 0x7F, timestamp, override=False)
+        self = cls(msg, rawdata, cmd, dst, src & 0x7F, timestamp, override=False)
         return self
 
     def to_raw(self) -> bytes:
@@ -74,13 +78,13 @@ class Telegram(object):
         raw += struct.pack("!H", self._crc(raw))
         return bytes(raw)
 
-    def __init__(self, param: int, rawdata: bytes = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC, timestamp: datetime.datetime | None = None, override: bool = True):
+    def __init__(self, msg: Message, rawdata: bytes = bytes(), cmd: Command = Command.QUR, dst: int = DEF_DST, src: int = DEF_SRC, timestamp: datetime.datetime | None = None, override: bool = True):
         if timestamp is None:
             timestamp = datetime.datetime.now()
         #self._time = timestamp.ctime()[4:-5]
         self._time = timestamp.strftime("%d.%m. %H:%M:%S")
-        self._param = param
         self._rawdata = rawdata
+        self._msg = msg
         self._cmd = cmd
         self._dst = dst
         self._src = src
@@ -88,17 +92,17 @@ class Telegram(object):
         self._flags = bytes()
         self._index = None
 
-        msg_default = (Flag.FB, None, "unknown")
-        msg = messages.get(self._param, msg_default)
-        if False and msg == msg_default:
-            # Try just with row number only (ignore various flags)
-            msg = messages.get(rows.get(self._param & 0xFFFF, None), msg_default)
+        #msg_default = (Flag.FB, None, "unknown")
+        #msg = messages.get(self._param, msg_default)
+        #if False and msg == msg_default:
+        #    # Try just with row number only (ignore various flags)
+        #    msg = messages.get(rows.get(self._param & 0xFFFF, None), msg_default)
 
-        if False: # is_indexed?
-            self._index = (self.param >> 24) & 0x3
+        #if False: # is_indexed?
+        #    self._index = (self.param >> 24) & 0x3
 
         self._intflags: Flag
-        self._intflags, self._datatype, self._name = msg
+        self._param, self._intflags, self._datatype, self._name = msg.param, msg.flags, msg.fields, msg.name
 
         if override:
             if self._intflags & Flag.BC:
@@ -136,7 +140,7 @@ class Telegram(object):
             self._data2rawdata()
 
         except Exception as e:
-            logger.error(f"Telegram.set_value error: {e}, {self}")
+            logger.error(f"Telegram.set_value error: {e}, {self} {self.msg.fields}")
             logger.error(traceback.format_exc())
             return False
         return True
@@ -229,3 +233,7 @@ class Telegram(object):
     @property
     def value(self) -> Any:
         return self._value
+
+    @property
+    def msg(self) -> Message:
+        return self._msg

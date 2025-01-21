@@ -1,6 +1,6 @@
 import time
 import queue
-from typing import Optional, Tuple, Any
+from typing import Optional, Any
 from collections.abc import Callable
 import traceback
 import threading
@@ -9,8 +9,8 @@ import concurrent.futures
 
 from .driver import BsbDriver
 from .messages import messages_by_name
-from .types import Command
-from .telegram import Telegram
+from .telegram import Telegram, Command, Message
+from .utils.testdriver import TestBsbDriver
 
 
 logger = logging.getLogger("BSB")
@@ -21,17 +21,16 @@ class Bsb():
     def __init__(self, port: str):
         self.callbacks: list[Callable[[str, Any], None]] = []
         self.loggers: list[Callable[[Telegram], None]] = []
-        self.requests: dict[str, int] = {}  # Monitored request: {name: refresh_time}
 
-        self._drv = BsbDriver(port)
-        self._requests: list[tuple[str, Optional[Any], bool, dict[str, Any], queue.Queue[Any]]] = []
-        self._mon_requests: dict[str, int | None] = {}
-        self._mon_refresh: dict[str, int | float] = {}
+        self._drv = TestBsbDriver() if port == "TEST" else BsbDriver(port)
+        self._requests: list[tuple[Message, Optional[Any], bool, dict[str, Any], queue.Queue[Any]]] = []
+        self._mon_requests: dict[Message, int | None] = {}
+        self._mon_refresh: dict[Message, float | None] = {}
 
         self._monitor_thread_event = threading.Event()
         self._monitor_thread = threading.Thread(target=self._monitor)
 
-        self._pending_set: dict[tuple[str, int, int], tuple[int|float, Any]] = {}
+        self._pending_set: dict[tuple[str, int, int], tuple[int | float, Any]] = {}
         self._tpe = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     def start(self) -> None:
@@ -42,25 +41,23 @@ class Bsb():
         self._monitor_thread.join()
 
     def get_value(self, req: str, src: int = Telegram.DEF_SRC) -> Any:
+        msg = messages_by_name[req]
         kwargs = {'src': src}
         q: queue.Queue[Any] = queue.Queue()
-        self._requests.append((req, None, False, kwargs, q))
+        self._requests.append((msg, None, False, kwargs, q))
         val = q.get()
         return val
 
-    def set_value(self, req: str, value: Any, cmd: Command=Command.SET, src: int = Telegram.DEF_SRC) -> None:
+    def set_value(self, req: str, value: Any, cmd: Command = Command.SET, src: int = Telegram.DEF_SRC) -> None:
+        msg = messages_by_name[req]
         kwargs = {'src': src, 'cmd': cmd}
         q: queue.Queue[Any] = queue.Queue()
-        self._requests.append((req, value, True, kwargs, q))
+        self._requests.append((msg, value, True, kwargs, q))
         v = q.get()
         if isinstance(v, Exception):
             raise v
 
-    def set_monitored(self, monitor: dict[str, int|None]) -> None:
-        for key in monitor:
-            # Check if message exists
-            messages_by_name[key]
-
+    def set_monitored(self, monitor: dict[Message, int | None]) -> None:
         self._mon_requests = {}
         self._mon_requests.update(monitor)
 
@@ -126,15 +123,15 @@ class Bsb():
 
         return telegram
 
-    def _get_value(self, req: str, src: int = Telegram.DEF_SRC) -> Any:
-        get = Telegram(messages_by_name[req], src=src)
+    def _get_value(self, msg: Message, src: int = Telegram.DEF_SRC) -> Any:
+        get = Telegram(msg, src=src)
         if not self._send_telegram(get):
             logger.warn(f"get_value: Can't send telegram: {get}")
             raise Exception
 
         timeout = 0
         ret = self._get_telegram()
-        while ret is None or ret.param != get.param:
+        while ret is None or ret.msg.param != get.msg.param:
             ret = self._get_telegram()
             time.sleep(0.1)
             timeout += 1
@@ -144,9 +141,8 @@ class Bsb():
 
         return ret.value
 
-    def _set_value(self, req: str, value: Any, cmd: Command=Command.SET, src: int = Telegram.DEF_SRC) -> bool:
-        param = messages_by_name[req]
-        telegram = Telegram(param, cmd=cmd, src=src)
+    def _set_value(self, msg: Message, value: Any, cmd: Command = Command.SET, src: int = Telegram.DEF_SRC) -> bool:
+        telegram = Telegram(msg, cmd=cmd, src=src)
         if not telegram.set_value(value):
             return False
 
@@ -159,7 +155,7 @@ class Bsb():
 
         timeout = 0
         t = self._get_telegram()
-        while (t is None or t.param != param) and timeout < 10:
+        while (t is None or t.msg.param != msg.param) and timeout < 10:
             if t:
                 logger.info(f"set_value: another telegram received: {t}")
             # TODO: Timeout
@@ -176,7 +172,7 @@ class Bsb():
 
         while self._requests:
             try:
-                request, value, do_set, kwargs, q = self._requests.pop()
+                msg, value, do_set, kwargs, q = self._requests.pop()
             except Exception as e:
                 logger.warn("handle request GET: " + str(e))
                 logger.warn(traceback.format_exc())
@@ -184,9 +180,9 @@ class Bsb():
 
             try:
                 if do_set:
-                    self._set_value(request, value, **kwargs)
+                    self._set_value(msg, value, **kwargs)
                 else:
-                    value = self._get_value(request, **kwargs)
+                    value = self._get_value(msg, **kwargs)
             except Exception as e:
                 q.put(Exception(e))
                 raise e
@@ -195,7 +191,7 @@ class Bsb():
 
             try:
                 for cb in self.callbacks:
-                    self._tpe.submit(cb, request, value)
+                    self._tpe.submit(cb, msg.name, value)
             except Exception as e:
                 logger.warn("handle request: " + str(e))
                 logger.warn(traceback.format_exc())
@@ -205,18 +201,18 @@ class Bsb():
     def _refresh(self) -> None:
         requests = self._mon_requests
 
-        for req, interval in requests.items():
+        for msg, interval in requests.items():
             if self._monitor_thread_event.is_set():
                 break
             current_time = time.time()
-            next_refresh = self._mon_refresh.get(req, 0)
+            next_refresh = self._mon_refresh.get(msg, 0)
             if next_refresh is not None and current_time >= next_refresh:
-                self._mon_refresh[req] = current_time + interval if interval is not None else None
+                self._mon_refresh[msg] = current_time + interval if interval is not None else None
                 try:
-                    val = self._get_value(req)
+                    val = self._get_value(msg)
                 except Exception as e:
                     logger.warn("refresh - get_value: " + str(e))
                     logger.warn(traceback.format_exc())
                 else:
                     for cb in self.callbacks:
-                        self._tpe.submit(cb, req, val)
+                        self._tpe.submit(cb, msg.name, val)

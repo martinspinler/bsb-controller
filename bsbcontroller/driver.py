@@ -6,6 +6,7 @@ from typing import Optional
 from serial import Serial, PARITY_ODD
 
 from .telegram import Telegram, CrcError
+from .messages import messages_by_id
 
 
 logger = logging.getLogger("BSB")
@@ -53,7 +54,7 @@ class BsbDriver(object):
             length = buf[3] if len(buf) > 3 else -1
             if len(buf) == length:
                 try:
-                    telegram = Telegram.from_raw(bytes(buf))
+                    telegram = Telegram.from_raw(bytes(buf), messages_by_id)
                     buf.clear()
                 except CrcError:
                     logger.warn(f"driver: Telegram CRC error: {buf}")

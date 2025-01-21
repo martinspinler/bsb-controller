@@ -1,7 +1,7 @@
 import abc
 import inspect
 import re
-from typing import Type, Optional, Tuple, List, Any, TypeVar, ClassVar
+from typing import Type, Optional, Any, ClassVar
 from struct import pack, unpack
 from dataclasses import dataclass
 
@@ -12,24 +12,22 @@ def clamp(n: int, smallest: int, largest: int) -> int:
     return max(smallest, min(n, largest))
 
 
-class TF(abc.ABC):
+class Field(abc.ABC):
     #In a ret telegram, flag 00 indicates a "normal" value, 01 a null value. In the latter case, the <value> byte should be ignored.
     #In a set telegram, the flag is set to:
     #01 when setting the value of a non-nullable field;
     #05 when setting a value for a nullable field;
     #06 when setting a nullable field to NULL (in this case, the <value> byte will be ignored).
     @classmethod
-    @abc.abstractmethod
     def dec(cls, data: list[int]) -> Any:
-        ...
+        raise NotImplementedError(f"dec missing for {cls}")
 
     @classmethod
-    @abc.abstractmethod
     def enc(cls, value: Any) -> list[int]:
-        ...
+        raise NotImplementedError(f"enc missing for {cls}")
 
 
-class TFTemp(TF):
+class Temp(Field):
     @classmethod
     def dec(cls, data: list[int]) -> float:
         return int(unpack("!h", bytes(data[0:2]))[0]) / 64
@@ -39,7 +37,7 @@ class TFTemp(TF):
         return list(pack("!h", 0 if value is None else int(value * 64)))
 
 
-class TFOnOff(TF):
+class OnOff(Field):
     @classmethod
     def dec(cls, data: list[int]) -> bool:
         return data[0] > 0
@@ -49,10 +47,10 @@ class TFOnOff(TF):
         return [1 if value else 0]
 
 
-class TFEnum(TF):
+class Enum(Field):
     values: dict[int, Any] = {}
     offset = 0
-    unknown: str|Type[Exception]="unknown"
+    unknown: str | Type[Exception] = "unknown"
 
     _values_rev = None
 
@@ -70,7 +68,7 @@ class TFEnum(TF):
         return [cls._values_rev[value]]
 
 
-class TFEnable(TFEnum):
+class Enable(Enum):
     unknown = Exception
     values: dict[int, bool] = {
         0xFF: True,
@@ -78,7 +76,7 @@ class TFEnable(TFEnum):
     }
 
 
-class TFCStatus(TFEnum): # also for boiler_status
+class CStatus(Enum): # also for boiler_status
     values = {
         0x00: "disabled",
         0x10: "modulation", # for burner_state
@@ -106,7 +104,7 @@ class TFCStatus(TFEnum): # also for boiler_status
     }
 
 
-class TFOpMode(TFEnum):
+class OpMode(Enum):
     values = {
         0: 'protection',
         1: 'automatic',
@@ -115,19 +113,41 @@ class TFOpMode(TFEnum):
     }
 
 
-class TFInt8(TF):
+class Int(Field):
+    size: int
+    char: str
+
     @classmethod
     def dec(cls, data: list[int]) -> int:
-        return data[0]
+        return int(unpack(f"!{cls.char}", bytes(data[0:cls.size]))[0])
+
+    @classmethod
+    def enc(cls, data: int) -> list[int]:
+        return list(pack(f"!{cls.char}", data))
 
 
-class TFPct2(TF):
+class Int8(Int):
+    size = 1
+    char = 'B'
+
+
+class Int16(Int):
+    size = 2
+    char = 'H'
+
+
+class Int32(Int):
+    size = 4
+    char = 'L'
+
+
+class Pct2(Field):
     @classmethod
     def dec(cls, data: list[int]) -> float:
         return int(unpack("!H", bytes(data[0:2]))[0]) / 100.0
 
 
-class TFDate(TF):
+class Date(Field):
     @classmethod
     def dec(cls, data: list[int]) -> str:
         _, Y, M, D, d, h, m, s, _ = data
@@ -146,25 +166,17 @@ class TFDate(TF):
         return []
 
 
-class TFInt32(TF):
-    @classmethod
-    def dec(cls, data: list[int]) -> int:
-        return int(unpack("!I", bytes(data[0:4]))[0])
-
-
-class TFInt16(TF):
-    @classmethod
-    def dec(cls, data: list[int]) -> int:
-        return int(unpack("!H", bytes(data[0:2]))[0])
-
-
-class TF10Float(TF):
+class Float10(Field):
     @classmethod
     def dec(cls, data: list[int]) -> float:
         return int(unpack("!H", bytes(data[0:2]))[0]) / 10.0
 
+    @classmethod
+    def enc(cls, data: float) -> list[int]:
+        return list(pack("!H", int(data * 10)))
 
-class TFError(TF):
+
+class Error(Field):
     @classmethod
     def dec(cls, data: list[int]) -> str:
         errno = data[1]
@@ -175,7 +187,7 @@ class TFError(TF):
         return f"{errno}: Neznama chyba"
 
 
-class TFHWater(TF):
+class HWater(Field):
     @classmethod
     def dec(cls, data: list[int]) -> str:
         s = ("charging" if data[1] & 0x08 else "ready")
@@ -183,7 +195,7 @@ class TFHWater(TF):
         return s
 
 
-class TFStatB(TF):
+class StatB(Field):
     @classmethod
     def dec(cls, data: list[int]) -> str:
         # data[3] == 0x59: enabled for HC1, 0x5B: enabled for HC2 + HC1
@@ -191,14 +203,14 @@ class TFStatB(TF):
 
 
 @dataclass
-class TFPlan(TF):
+class Plan(Field):
     plan: list[Optional[tuple[datetime.time, datetime.time]]]
 
     def __str__(self) -> str:
         return " ".join(["{0}-{1}".format(p[0].strftime("%H:%M"), p[1].strftime("%H:%M")) if p is not None else "" for p in self.plan])
 
     @classmethod
-    def dec(cls, data: list[int]) -> "TFPlan":
+    def dec(cls, data: list[int]) -> "Plan":
         plan: list[Optional[tuple[datetime.time, datetime.time]]] = []
         for i in [0, 2, 4]:
             if data[i] == 0xFF:
@@ -211,30 +223,30 @@ class TFPlan(TF):
 
 
 @dataclass
-class TFStatHW(TF):
+class StatHW(Field):
     stby: bool
     outdoor_temp: float
     water_pressure: float
-    plan: TFPlan
+    plan: Plan
 
     def __str__(self) -> str:
         return f"OT: {self.outdoor_temp:5.1f}, WP: {self.water_pressure:.1f} Stby: {self.stby} Plan: {self.plan}"
 
     @classmethod
-    def dec(cls, data: list[int]) -> "TFStatHW":
+    def dec(cls, data: list[int]) -> "StatHW":
         return cls(
             bool(data[10] & 0x08),
-            TFTemp.dec(data[0:2]),
-            TF10Float.dec(data[2:4]),
-            TFPlan.dec(data[4:10]),
+            Temp.dec(data[0:2]),
+            Float10.dec(data[2:4]),
+            Plan.dec(data[4:10]),
         )
 
 
 @dataclass
-class TFHCStat(TF):
+class HCStat(Field):
     mode: str
     current: str
-    plan: TFPlan
+    plan: Plan
     running: bool
 
     current_values: ClassVar[dict[int, str]] = {
@@ -247,18 +259,18 @@ class TFHCStat(TF):
         return f"mode: {self.mode} cur: {self.current} run: {self.running} plan: {self.plan}"
 
     @classmethod
-    def dec(cls, data: list[int]) -> "TFHCStat":
+    def dec(cls, data: list[int]) -> "HCStat":
         return cls(
-            TFOpMode.dec(data[0:1]),                    # Currently selected mode
-            TFHCStat.current_values.get(data[1], 'unknown'), # Mode applied by schedule
-            TFPlan.dec(data[2:8]),
+            OpMode.dec(data[0:1]),                    # Currently selected mode
+            HCStat.current_values.get(data[1], 'unknown'), # Mode applied by schedule
+            Plan.dec(data[2:8]),
             data[8] == 0x02                             # Boiler is running (for some HC)?
         )
         # TODO: Check
         #unknown2 = data[9]
 
 
-class TFSchedule(TF):
+class Schedule(Field):
     @classmethod
     def dec(cls, data: list[int]) -> str:
         groups = [data[(i * 4):(i * 4 + 4)] for i in range(3)]

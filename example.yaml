@@ -1,0 +1,51 @@
+bsbport: /dev/ttyAMA3
+
+requests:
+  - boiler_temp: 60
+  - room1_temp: 600
+  - room2_temp: 600
+  - outer_temp: 600
+  - boiler_temp: 60
+  - boiler_return_temp: 60
+  - flue_temp: 60
+  - boiler_water_temp: 60
+  - pump_modulation_pct: 60
+  - burner_modulation_pct: 60
+  - burner_start_count: 300
+  - gas_consumption: 300
+  - water_pressure: 300
+  - hc_boiler_status: 30
+  - hc1_mode: 60
+  - hc2_mode: 60
+  - outer_temp
+  - room1_temp
+  - room2_temp
+  - hc_boiler_status
+  - room1_temp_req
+  - room2_temp_req
+  - hc1_operating_mode
+  - hc2_operating_mode
+  - hc2_enabled
+  - hot_water_push
+  - hc1_rampup_max_temp
+  - hc2_rampup_max_temp
+  - room2_req_comfort_temp
+  - room2_req_reduced_temp
+
+mqtt:
+  connection:
+    addr: 127.0.0.1
+    port: 1883
+
+  allow_set:
+    - room1_temp_req
+    - hc1_rampup_max_temp
+    - hc1_operating_mode
+    - hc2_operating_mode
+    - hc2_enabled
+    - hot_water_push
+
+  rename:
+    room1_temp_status: room1_temp
+    outer_temp: outside_temperature
+    hc_boiler_status: boiler_heating_status

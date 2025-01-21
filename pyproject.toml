@@ -2,9 +2,16 @@
 name = "bsbcontroller"
 version = "0.1.0"
 dependencies = [
+	"paho.mqtt",
 	"pyserial",
+	"pyyaml",
+	"schema",
 ]
 
 [[tool.mypy.overrides]]
 module = "serial"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "schema"
 ignore_missing_imports = true
