@@ -43,7 +43,7 @@ class HttpLogHandler(MyBaseHTTPRequestHandler):
         bsb = self.server.logger.bsb
 
         qget = query.get("get")
-        qset = query.get("get")
+        qset = query.get("set")
         qval = query.get("val")
         if qget is not None:
             val = bsb.get_value(qget[0])

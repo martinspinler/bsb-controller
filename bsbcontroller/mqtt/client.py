@@ -79,8 +79,7 @@ class MqttBsbClient(threading.Thread):
 
                 self._bsb.set_value(request, val)
 
-    def _bsb_callback(self, name: str, value: Any) -> None:
-        request = self.translations.get(name, name)
+    def _bsb_callback(self, request: str, value: Any) -> None:
         if request in self._enabled_topics:
             added = False
             if request not in self._values:
@@ -92,7 +91,9 @@ class MqttBsbClient(threading.Thread):
 
             if value != self._values[request] or added:
                 self._values[request] = value
-                self._client.publish(f"{self._prefix}/{request}/state", value, retain=True)
+
+                name = self.translations.get(request, request)
+                self._client.publish(f"{self._prefix}/{name}/state", value, retain=True)
 
     def _bsb_log(self, telegram: Telegram) -> None:
         if telegram.cmd in [Command.INF]:
