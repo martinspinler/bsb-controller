@@ -14,7 +14,7 @@ from . import messages
 class MqttBsbClient(threading.Thread):
     items = messages.boiler_requests
     enabled_requests: list[str]
-    translationss: dict[str, str]
+    translations: dict[str, str]
     corrections: dict[str, Callable[[Any], Any]] = {}
 
     def __init__(self, bsb: Bsb, config: Any):
