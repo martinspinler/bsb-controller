@@ -21,6 +21,16 @@ client_ip, client_port = "127.0.0.1", 1883
 bsb_port = "/dev/ttyAMA3"
 
 
+def corr_none2zero(v):
+    return 0 if v is None else v
+
+
+corrections = {
+    "pump_modulation_pct": corr_none2zero,
+    "burner_modulation_pct": corr_none2zero,
+}
+
+
 def bsb_onetime_init(bsb: Bsb) -> None:
     bsb.set_value("datetime", datetime.datetime.now())
 
@@ -90,6 +100,7 @@ def run(config: Any, monitored_msgs: dict[Message, int | None]) -> None:
     bsb_onetime_init(bsb)
     if config.get("mqtt") is not None:
         mc = MqttBsbClient(bsb, config.get("mqtt"))
+        mc.corrections.update(corrections)
         mc.start()
 
     try:
