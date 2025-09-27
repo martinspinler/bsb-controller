@@ -34,8 +34,6 @@ class Telegram(object):
     DEF_SRC = 0x42
     DEF_DST = 0x00
 
-    UNKNOWN_MESSAGE = Message(0xFFFFFFFF, Flag.FB, None, "unknown")
-
     @staticmethod
     def _crc(raw: bytes) -> int:
         crcval = 0
@@ -63,7 +61,9 @@ class Telegram(object):
         #assert sof == cls.SOF
         #assert cmd in set(Command)
         #assert length == len(raw)
-        msg = messages_by_id.get(param, cls.UNKNOWN_MESSAGE)
+        msg = messages_by_id.get(param)
+        if msg is None:
+            msg = Message(param, Flag.FB, None, "unknown")
 
         self = cls(msg, rawdata, cmd, dst, src & 0x7F, timestamp, override=False)
         return self
