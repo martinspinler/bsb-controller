@@ -44,6 +44,5 @@ mqtt:
     - hot_water_push
 
   rename:
-    room1_temp_status: room1_temp
     outer_temp: outside_temperature
     hc_boiler_status: boiler_heating_status
