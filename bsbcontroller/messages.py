@@ -71,7 +71,9 @@ messages = [
     M(0x2d3d0610, FB, None,         "hc1_curve_offset"),
     M(0x3d210662, FB, f.Temp,       "hc1_rampup_temp"),
     M(0x213d0662, FB, f.Temp,       "hc1_rampup_max_temp"),
+    M(0x213d0663, FB, f.Temp,       "hc1_rampup_min_temp"),
     M(0x223d0662, FB, f.Temp,       "hc2_rampup_max_temp"),
+    M(0x223d0663, FB, f.Temp,       "hc2_rampup_min_temp"),
     M(0x313d06b9, FB, f.Temp,       "req_hot_water_nominal_temp"),
     M(0x313d06ba, FB, f.Temp,       "req_hot_water_reduced_temp"),
     M(0x053d06e8, NN, None,         "phone_number"), # 30 30 30 30 30 30 31 31 30 30 30 00 00 00 00 00
